@@ -153,6 +153,23 @@ class DGCNN(nn.Module):
         x = self.linear3(x)
         return x
 
+
+class SLGCNN(nn.Module):
+    """
+    Static local graph convolutional neural network. The specific purpose of this module is to learn translation
+    and permutation invariant local features that do not depend on the absolute positions of particles. Additionally
+    the neighborhoods of the particles remain constant throughout the entire graph. Finally, the neighborhoods are not
+    computed using k-nn but rather a distance heuristic which means that padding has to be applied.
+    """
+    def __init__(self, in_dim=3, out_dim=1):
+        super(SLGCNN, self).__init__()
+
+        self.bn1 = nn.BatchNorm2d(64)
+        self.bn2 = nn.BatchNorm2d(64)
+        self.bn3 = nn.BatchNorm2d(128)
+        self.bn4 = nn.BatchNorm2d(256)
+
+
 if __name__ == "__main__":
     x = torch.rand(size=(8, 3, 2600), dtype=torch.float32)
     args = type('dgcnn_args', (), {'k': 10, 'emb_dims': 256, 'dropout': 0.2})
