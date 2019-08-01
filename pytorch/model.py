@@ -33,7 +33,8 @@ def get_graph_feature(x, k=20, idx=None):
     x = x.view(batch_size, -1, num_points)
     if idx is None:
         idx = knn(x, k=k)   # (batch_size, num_points, k)
-    device = torch.device('cuda')
+
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     idx_base = torch.arange(0, batch_size, device=device).view(-1, 1, 1)*num_points
 
@@ -151,3 +152,15 @@ class DGCNN(nn.Module):
         x = self.dp2(x)
         x = self.linear3(x)
         return x
+
+if __name__ == "__main__":
+    x = torch.rand(size=(8, 3, 2600), dtype=torch.float32)
+    args = type('dgcnn_args', (), {'k': 10, 'emb_dims': 256, 'dropout': 0.2})
+
+    pointnet = PointNet(args)
+    y = pointnet(x)
+    print(f"Point net test output: {y.size()}")
+
+    dgcnn = DGCNN(args)
+    y = dgcnn(x)
+    print(f"DGCNN test output: {y.size()}")
