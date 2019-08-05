@@ -27,7 +27,7 @@ def knn(x, k):
     return idx
 
 
-def get_graph_feature(x, k=20, idx=None):
+def get_graph_feature(x, k=20, idx=None, local=False):
     batch_size = x.size(0)
     num_points = x.size(2)
     x = x.view(batch_size, -1, num_points)
@@ -48,8 +48,11 @@ def get_graph_feature(x, k=20, idx=None):
     feature = x.view(batch_size*num_points, -1)[idx, :]
     feature = feature.view(batch_size, num_points, k, num_dims) 
     x = x.view(batch_size, num_points, 1, num_dims).repeat(1, 1, k, 1)
-    
-    feature = torch.cat((feature-x, x), dim=3).permute(0, 3, 1, 2)
+
+    if local:
+        feature = (feature-x).permute(0, 3, 1, 2)
+    else:
+        feature = torch.cat((feature-x, x), dim=3).permute(0, 3, 1, 2)
   
     return feature
 
@@ -161,13 +164,64 @@ class SLGCNN(nn.Module):
     the neighborhoods of the particles remain constant throughout the entire graph. Finally, the neighborhoods are not
     computed using k-nn but rather a distance heuristic which means that padding has to be applied.
     """
-    def __init__(self, in_dim=3, out_dim=1):
+    def __init__(self, in_dim=3, out_dim=1, k=20):
         super(SLGCNN, self).__init__()
+
+        self.k = k
 
         self.bn1 = nn.BatchNorm2d(64)
         self.bn2 = nn.BatchNorm2d(64)
         self.bn3 = nn.BatchNorm2d(128)
         self.bn4 = nn.BatchNorm2d(256)
+        self.bn5 = nn.BatchNorm1d(256)
+        self.bn6 = nn.BatchNorm1d(128)
+
+        self.conv1 = nn.Sequential(nn.Conv2d(in_dim, 64, kernel_size=1, bias=False),
+                                   self.bn1,
+                                   nn.LeakyReLU(negative_slope=0.2))
+        self.conv2 = nn.Sequential(nn.Conv2d(64, 64, kernel_size=1, bias=False),
+                                   self.bn2,
+                                   nn.LeakyReLU(negative_slope=0.2))
+        self.conv3 = nn.Sequential(nn.Conv2d(64, 128, kernel_size=1, bias=False),
+                                   self.bn3,
+                                   nn.LeakyReLU(negative_slope=0.2))
+        self.conv4 = nn.Sequential(nn.Conv2d(128, 256, kernel_size=1, bias=False),
+                                   self.bn4,
+                                   nn.LeakyReLU(negative_slope=0.2))
+        self.conv5 = nn.Sequential(nn.Conv1d(512, 256, kernel_size=1, bias=False),
+                                   self.bn5,
+                                   nn.LeakyReLU(negative_slope=0.2))
+        self.conv6 = nn.Sequential(nn.Conv1d(256, 128, kernel_size=1, bias=False),
+                                   self.bn6,
+                                   nn.ReLU())
+        self.conv7 = nn.Sequential(nn.Conv1d(128, out_dim, kernel_size=1, bias=False),
+                                   nn.ReLU())
+
+    def forward(self, x, idx=None):
+        if idx is None:
+            idx = knn(x, self.k)
+        x = get_graph_feature(x, k=self.k, idx=idx, local=True)
+        x = self.conv1(x)
+        x1 = x.max(dim=-1, keepdim=False)[0]
+
+        x = get_graph_feature(x1, k=self.k, idx=idx, local=True)
+        x = self.conv2(x)
+        x2 = x.max(dim=-1, keepdim=False)[0]
+
+        x = get_graph_feature(x2, k=self.k, idx=idx, local=True)
+        x = self.conv3(x)
+        x3 = x.max(dim=-1, keepdim=False)[0]
+
+        x = get_graph_feature(x3, k=self.k, idx=idx, local=True)
+        x = self.conv4(x)
+        x4 = x.max(dim=-1, keepdim=False)[0]
+
+        x = torch.cat((x1, x2, x3, x4), dim=1)
+
+        x = self.conv5(x)
+        x = self.conv6(x)
+        x = self.conv7(x)
+        return x
 
 
 if __name__ == "__main__":
@@ -181,3 +235,7 @@ if __name__ == "__main__":
     dgcnn = DGCNN(args)
     y = dgcnn(x)
     print(f"DGCNN test output: {y.size()}")
+
+    slgcnn = SLGCNN(in_dim=3, out_dim=1)
+    y = slgcnn(x)
+    print(f"SLGCNN test output: {y.size()}")
