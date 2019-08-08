@@ -17,34 +17,53 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from GPUtil import showUtilization
+
+def gpu_usage(message=''):
+    print(message)
+    showUtilization()
+    print('------------------')
+
 
 def knn(x, k):
-    inner = -2*torch.matmul(x.transpose(2, 1), x)
-    xx = torch.sum(x**2, dim=1, keepdim=True)
-    pairwise_distance = -xx - inner - xx.transpose(2, 1)
- 
-    idx = pairwise_distance.topk(k=k, dim=-1)[1]   # (batch_size, num_points, k)
-    return idx
+    with torch.no_grad():
+        gpu_usage("Start of knn")
+        inner = -2*torch.matmul(x.transpose(2, 1), x)
+        gpu_usage("First step of knn")
+        xx = torch.sum(x**2, dim=1, keepdim=True)
+        gpu_usage("Second step of knn")
+        pairwise_distance = - xx - inner - xx.transpose(2, 1)
+        gpu_usage("Middle of knn")
+        idx = pairwise_distance.topk(k=k, dim=-1)[1]   # (batch_size, num_points, k)
+        gpu_usage("End of knn")
+        return idx.topk(k=k, dim=-1)[1]
 
+def knn_iterative(x, k):
+    with torch.no_grad():
+        ret = []
+        for y in x:
+            r = torch.mm(y.t(), y)
+            diag = r.diag().unsqueeze(0).expand_as(r)
+            dist = diag + diag.t() - 2*r
+            ret.append(dist.sqrt().topk(k=k, dim=-1)[1])
+        return torch.stack(ret)
+    
 
 def get_graph_feature(x, k=20, idx=None, local=False):
-    batch_size = x.size(0)
-    num_points = x.size(2)
+    batch_size, num_dims, num_points = x.size()
     x = x.view(batch_size, -1, num_points)
     if idx is None:
         idx = knn(x, k=k)   # (batch_size, num_points, k)
 
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-    idx_base = torch.arange(0, batch_size, device=device).view(-1, 1, 1)*num_points
-
-    idx = idx + idx_base
+    # idx_base = torch.arange(0, batch_size, device=device).view(-1, 1, 1)*num_points
+    device = "cuda:0" if idx.is_cuda else "cpu"
+    gpu_usage("Before index array stuff")
+    idx = idx+torch.arange(0, batch_size, device=device).view(-1, 1, 1)*num_points
 
     idx = idx.view(-1)
  
-    _, num_dims, _ = x.size()
-
     x = x.transpose(2, 1).contiguous()   # (batch_size, num_points, num_dims)  -> (batch_size*num_points, num_dims) #   batch_size * num_points * k + range(0, batch_size*num_points)
+    gpu_usage("Before feature creation")
     feature = x.view(batch_size*num_points, -1)[idx, :]
     feature = feature.view(batch_size, num_points, k, num_dims) 
     x = x.view(batch_size, num_points, 1, num_dims).repeat(1, 1, k, 1)
@@ -198,24 +217,30 @@ class SLGCNN(nn.Module):
                                    nn.LeakyReLU(negative_slope=0.2))
 
     def forward(self, x, idx=None):
+        gpu_usage("Before knn")
         if idx is None:
             idx = knn(x, self.k)
+        gpu_usage("Before graph feature 1")
         x = get_graph_feature(x, k=self.k, idx=idx, local=True)
         x = self.conv1(x)
         x1 = x.max(dim=-1, keepdim=False)[0]
 
+        gpu_usage("Before graph feature 2")
         x = get_graph_feature(x1, k=self.k, idx=idx, local=True)
         x = self.conv2(x)
         x2 = x.max(dim=-1, keepdim=False)[0]
 
+        gpu_usage("Before graph feature 3")
         x = get_graph_feature(x2, k=self.k, idx=idx, local=True)
         x = self.conv3(x)
         x3 = x.max(dim=-1, keepdim=False)[0]
 
+        gpu_usage("Before graph feature 4")
         x = get_graph_feature(x3, k=self.k, idx=idx, local=True)
         x = self.conv4(x)
         x4 = x.max(dim=-1, keepdim=False)[0]
 
+        gpu_usage("Before 1d convolutions")
         x = torch.cat((x1, x2, x3, x4), dim=1)
 
         x = self.conv5(x)
@@ -239,3 +264,7 @@ if __name__ == "__main__":
     slgcnn = SLGCNN(in_dim=3, out_dim=1)
     y = slgcnn(x)
     print(f"SLGCNN test output: {y.size()}")
+
+    slgcnn.to("cuda:0")
+    y = slgcnn(x.cuda())
+    print(f"SLGCNN on GPU output: {y.size()}")
