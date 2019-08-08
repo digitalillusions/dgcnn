@@ -193,9 +193,9 @@ class SLGCNN(nn.Module):
                                    nn.LeakyReLU(negative_slope=0.2))
         self.conv6 = nn.Sequential(nn.Conv1d(256, 128, kernel_size=1, bias=False),
                                    self.bn6,
-                                   nn.ReLU())
+                                   nn.LeakyReLU(negative_slope=0.2))
         self.conv7 = nn.Sequential(nn.Conv1d(128, out_dim, kernel_size=1, bias=False),
-                                   nn.ReLU())
+                                   nn.LeakyReLU(negative_slope=0.2))
 
     def forward(self, x, idx=None):
         if idx is None:
@@ -221,7 +221,7 @@ class SLGCNN(nn.Module):
         x = self.conv5(x)
         x = self.conv6(x)
         x = self.conv7(x)
-        return x
+        return x.transpose(2,1)
 
 
 if __name__ == "__main__":
