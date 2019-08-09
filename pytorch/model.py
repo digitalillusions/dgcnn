@@ -36,16 +36,17 @@ def knn(x, k):
         gpu_usage("Middle of knn")
         idx = pairwise_distance.topk(k=k, dim=-1)[1]   # (batch_size, num_points, k)
         gpu_usage("End of knn")
-        return idx.topk(k=k, dim=-1)[1]
+        return idx
+
 
 def knn_iterative(x, k):
     with torch.no_grad():
         ret = []
         for y in x:
-            r = torch.mm(y.t(), y)
+            r = 2*torch.mm(y.t(), y)
             diag = r.diag().unsqueeze(0).expand_as(r)
             dist = diag + diag.t() - 2*r
-            ret.append(dist.sqrt().topk(k=k, dim=-1)[1])
+            ret.append(dist.topk(k=k, largest=False, dim=-1)[1])
         return torch.stack(ret)
     
 
@@ -72,6 +73,8 @@ def get_graph_feature(x, k=20, idx=None, local=False):
         feature = (feature-x).permute(0, 3, 1, 2)
     else:
         feature = torch.cat((feature-x, x), dim=3).permute(0, 3, 1, 2)
+
+    gpu_usage("After feature creation")
   
     return feature
 
@@ -265,6 +268,14 @@ if __name__ == "__main__":
     y = slgcnn(x)
     print(f"SLGCNN test output: {y.size()}")
 
-    slgcnn.to("cuda:0")
-    y = slgcnn(x.cuda())
-    print(f"SLGCNN on GPU output: {y.size()}")
+    if torch.cuda.is_available():
+        slgcnn.to("cuda:0")
+        y = slgcnn(x.cuda())
+        print(f"SLGCNN on GPU output: {y.size()}")
+
+    # Test the iterative knn
+    # neigh = knn(x.cuda(), 10)
+    # neigh_iter = knn_iterative(x.cuda(), 10)
+    # for i in zip(neigh, neigh_iter):
+    #     print(i[0][torch.eq(i[0], i[1]) == 0])
+    #     print(i[1][torch.eq(i[0], i[1]) == 0])
