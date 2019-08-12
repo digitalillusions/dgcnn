@@ -79,6 +79,14 @@ def get_graph_feature(x, k=20, idx=None, local=False):
     return feature
 
 
+def get_graph_feature_iterative(x, idx):
+    batch_size, num_dims, num_points = x.size()
+    k = idx.size()[-1]
+    for item, item_idx in zip(x, idx):
+        y = item.t()[item_idx]
+        yield (y - item.t().unsqueeze(1).expand(-1,k,-1)).permute(2,0,1)
+
+
 class PointNet(nn.Module):
     def __init__(self, args, output_channels=40):
         super(PointNet, self).__init__()
@@ -222,24 +230,28 @@ class SLGCNN(nn.Module):
     def forward(self, x, idx=None):
         gpu_usage("Before knn")
         if idx is None:
-            idx = knn(x, self.k)
+            idx = knn_iterative(x, self.k)
         gpu_usage("Before graph feature 1")
-        x = get_graph_feature(x, k=self.k, idx=idx, local=True)
+        # x = get_graph_feature(x, k=self.k, idx=idx, local=True)
+        x = torch.stack([feat for feat in get_graph_feature_iterative(x, idx)])
         x = self.conv1(x)
         x1 = x.max(dim=-1, keepdim=False)[0]
 
         gpu_usage("Before graph feature 2")
-        x = get_graph_feature(x1, k=self.k, idx=idx, local=True)
+        # x = get_graph_feature(x1, k=self.k, idx=idx, local=True)
+        x = torch.stack([feat for feat in get_graph_feature_iterative(x1, idx)])
         x = self.conv2(x)
         x2 = x.max(dim=-1, keepdim=False)[0]
 
         gpu_usage("Before graph feature 3")
-        x = get_graph_feature(x2, k=self.k, idx=idx, local=True)
+        # x = get_graph_feature(x2, k=self.k, idx=idx, local=True)
+        x = torch.stack([feat for feat in get_graph_feature_iterative(x2, idx)])
         x = self.conv3(x)
         x3 = x.max(dim=-1, keepdim=False)[0]
 
         gpu_usage("Before graph feature 4")
-        x = get_graph_feature(x3, k=self.k, idx=idx, local=True)
+        # x = get_graph_feature(x3, k=self.k, idx=idx, local=True)
+        x = torch.stack([feat for feat in get_graph_feature_iterative(x3, idx)])
         x = self.conv4(x)
         x4 = x.max(dim=-1, keepdim=False)[0]
 
@@ -253,16 +265,16 @@ class SLGCNN(nn.Module):
 
 
 if __name__ == "__main__":
-    x = torch.rand(size=(8, 3, 2600), dtype=torch.float32)
+    x = torch.rand(size=(4, 3, 10000), dtype=torch.float32)
     args = type('dgcnn_args', (), {'k': 10, 'emb_dims': 256, 'dropout': 0.2})
 
-    pointnet = PointNet(args)
-    y = pointnet(x)
-    print(f"Point net test output: {y.size()}")
+    # pointnet = PointNet(args)
+    # y = pointnet(x)
+    # print(f"Point net test output: {y.size()}")
 
-    dgcnn = DGCNN(args)
-    y = dgcnn(x)
-    print(f"DGCNN test output: {y.size()}")
+    # dgcnn = DGCNN(args)
+    # y = dgcnn(x)
+    # print(f"DGCNN test output: {y.size()}")
 
     slgcnn = SLGCNN(in_dim=3, out_dim=1)
     y = slgcnn(x)
@@ -273,9 +285,11 @@ if __name__ == "__main__":
         y = slgcnn(x.cuda())
         print(f"SLGCNN on GPU output: {y.size()}")
 
-    # Test the iterative knn
-    # neigh = knn(x.cuda(), 10)
-    # neigh_iter = knn_iterative(x.cuda(), 10)
+    # Test the iterative knn and iterative feature retrieval
+    # device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    # neigh = knn(x.to(device=device), 10)
+    # neigh_iter = knn_iterative(x.to(device=device), 10)
+    # feature = torch.stack([feat for feat in get_graph_feature_iterative(x, neigh_iter)])
     # for i in zip(neigh, neigh_iter):
     #     print(i[0][torch.eq(i[0], i[1]) == 0])
     #     print(i[1][torch.eq(i[0], i[1]) == 0])
