@@ -346,22 +346,18 @@ class SLGCNNlite(nn.Module):
         x = torch.bmm(x, trans)
         x = x.transpose(2, 1)
 
-        # x = get_graph_feature(x, k=self.k, idx=idx, local=True)
         x = torch.stack([feat for feat in get_graph_feature_iterative(x, idx)])
         x = self.conv1(x)
         x1 = x.max(dim=-1, keepdim=False)[0]
 
-        # x = get_graph_feature(x1, k=self.k, idx=idx, local=True)
         x = torch.stack([feat for feat in get_graph_feature_iterative(x1, idx)])
         x = self.conv2(x)
         x2 = x.max(dim=-1, keepdim=False)[0]
 
-        # x = get_graph_feature(x2, k=self.k, idx=idx, local=True)
         x = torch.stack([feat for feat in get_graph_feature_iterative(x2, idx)])
         x = self.conv3(x)
         x3 = x.max(dim=-1, keepdim=False)[0]
 
-        # x = get_graph_feature(x3, k=self.k, idx=idx, local=True)
         x = torch.stack([feat for feat in get_graph_feature_iterative(x3, idx)])
         x = self.conv4(x)
         x4 = x.max(dim=-1, keepdim=False)[0]
