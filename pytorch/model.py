@@ -219,12 +219,13 @@ class SLGCNN(nn.Module):
     the neighborhoods of the particles remain constant throughout the entire graph. Finally, the neighborhoods are not
     computed using k-nn but rather a distance heuristic which means that padding has to be applied.
     """
-    def __init__(self, in_dim=3, out_dim=1, k=20):
+    def __init__(self, in_dim=3, out_dim=1, k=20, do_alignment=False):
         super(SLGCNN, self).__init__()
 
         self.k = k
 
         self.align = Align3D()
+        self.do_alignment = do_alignment
 
         self.bn1 = nn.BatchNorm2d(64)
         self.bn2 = nn.BatchNorm2d(64)
@@ -260,10 +261,11 @@ class SLGCNN(nn.Module):
             idx = knn_iterative(x, self.k)
 
         # Apply 3d point transformation
-        trans = self.align(x, idx)
-        x = x.transpose(2, 1)
-        x = torch.bmm(x, trans)
-        x = x.transpose(2, 1)
+        if self.do_alignment:
+            trans = self.align(x, idx)
+            x = x.transpose(2, 1)
+            x = torch.bmm(x, trans)
+            x = x.transpose(2, 1)
 
         # x = get_graph_feature(x, k=self.k, idx=idx, local=True)
         x = torch.stack([feat for feat in get_graph_feature_iterative(x, idx)])
@@ -300,12 +302,13 @@ class SLGCNNlite(nn.Module):
     the neighborhoods of the particles remain constant throughout the entire graph. Finally, the neighborhoods are not
     computed using k-nn but rather a distance heuristic which means that padding has to be applied.
     """
-    def __init__(self, in_dim=3, out_dim=1, k=20):
+    def __init__(self, in_dim=3, out_dim=1, k=20, do_alignment=False):
         super(SLGCNNlite, self).__init__()
 
         self.k = k
 
         self.align = Align3D()
+        self.do_alignment = do_alignment
 
         self.bn1 = nn.BatchNorm2d(32)
         self.bn2 = nn.BatchNorm2d(32)
@@ -341,10 +344,11 @@ class SLGCNNlite(nn.Module):
             idx = knn_iterative(x, self.k)
 
         # Apply 3d point transformation
-        trans = self.align(x, idx)
-        x = x.transpose(2, 1)
-        x = torch.bmm(x, trans)
-        x = x.transpose(2, 1)
+        if self.do_alignment:
+            trans = self.align(x, idx)
+            x = x.transpose(2, 1)
+            x = torch.bmm(x, trans)
+            x = x.transpose(2, 1)
 
         x = torch.stack([feat for feat in get_graph_feature_iterative(x, idx)])
         x = self.conv1(x)
