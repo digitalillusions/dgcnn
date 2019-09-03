@@ -71,7 +71,6 @@ def get_graph_feature(x, k=20, idx=None, local=False):
 
 
 def get_graph_feature_iterative(x, idx):
-    batch_size, num_dims, num_points = x.size()
     k = idx.size()[-1]
     for item, item_idx in zip(x, idx):
         y = item.t()[item_idx]
