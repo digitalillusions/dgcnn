@@ -204,7 +204,8 @@ class Align3D(nn.Module):
         x = F.relu(self.bn3(self.linear1(x)))
         x = self.linear2(x)
         # iden = torch.autograd.Variable(torch.eye(3)).view(1, 9).expand(batch_size, -1)
-        iden = x.new_tensor(torch.eye(3)).view(1, 9).expand(batch_size, -1)
+        # iden = x.new_tensor(torch.eye(3)).view(1, 9).expand(batch_size, -1)
+        iden = torch.eye(3, device=x.device, dtype=x.dtype).view(1, 9).expand(batch_size, -1)
         # if x.is_cuda:
         #     iden = iden.cuda()
         x = x + iden
